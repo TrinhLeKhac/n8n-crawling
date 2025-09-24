@@ -15,9 +15,16 @@ try:
     ssh.connect(HOST, PORT, USERNAME, PASSWORD)
     print(f"✓ Đã kết nối tới {HOST}")
     
+    # Kiểm tra và tạo folder n8n-crawling nếu chưa có
+    stdin, stdout, stderr = ssh.exec_command("ls -la /root/n8n-crawling")
+    if stderr.read().decode():
+        print("Tạo folder n8n-crawling...")
+        ssh.exec_command("mkdir -p /root/n8n-crawling/output")
+    else:
+        print("Folder n8n-crawling đã tồn tại")
+    
     # Cài đặt môi trường
     setup_commands = [
-        "cd /root/n8n-crawling",
         "apt update",
         "apt install -y python3-pip",
         "pip3 install selenium pandas openpyxl",
