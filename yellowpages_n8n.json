@@ -1,0 +1,144 @@
+{
+  "name": "crawling-yellow-pages",
+  "nodes": [
+    {
+      "parameters": {
+        "url": "https://www.yellowpages.vn/",
+        "responseFormat": "string"
+      },
+      "id": "1",
+      "name": "Get Homepage",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
+      "position": [200, 300]
+    },
+    {
+      "parameters": {
+        "operation": "extractHtmlContent",
+        "sourceData": "={{ $json[\"body\"] }}",
+        "extractionValues": {
+          "values": [
+            {
+              "key": "category_name",
+              "cssSelector": ".p-2.ps-1 a.text-dark",
+              "returnValue": "text"
+            },
+            {
+              "key": "category_href",
+              "cssSelector": ".p-2.ps-1 a.text-dark",
+              "returnValue": "attribute",
+              "attribute": "href"
+            }
+          ]
+        },
+        "options": {
+          "returnArray": true
+        }
+      },
+      "id": "2",
+      "name": "Extract Main Categories",
+      "type": "n8n-nodes-base.htmlExtract",
+      "typeVersion": 1,
+      "position": [500, 300]
+    },
+    {
+      "parameters": {
+        "batchSize": 1
+      },
+      "id": "3",
+      "name": "Split Main Categories",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 1,
+      "position": [800, 300]
+    },
+    {
+      "parameters": {
+        "url": "={{ $json[\"category_href\"] }}",
+        "responseFormat": "string"
+      },
+      "id": "4",
+      "name": "Get Main Category Page",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
+      "position": [1100, 300]
+    },
+    {
+      "parameters": {
+        "operation": "extractHtmlContent",
+        "sourceData": "={{ $json[\"body\"] }}",
+        "extractionValues": {
+          "values": [
+            {
+              "key": "sub_name",
+              "cssSelector": ".col-sm-6.p-4.pe-3.pt-0.pb-2 a",
+              "returnValue": "text"
+            },
+            {
+              "key": "sub_href",
+              "cssSelector": ".col-sm-6.p-4.pe-3.pt-0.pb-2 a",
+              "returnValue": "attribute",
+              "attribute": "href"
+            }
+          ]
+        },
+        "options": {
+          "returnArray": true
+        }
+      },
+      "id": "5",
+      "name": "Extract Sub Categories",
+      "type": "n8n-nodes-base.htmlExtract",
+      "typeVersion": 1,
+      "position": [1400, 300]
+    }
+  ],
+  "connections": {
+    "Get Homepage": {
+      "main": [
+        [
+          {
+            "node": "Extract Main Categories",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Main Categories": {
+      "main": [
+        [
+          {
+            "node": "Split Main Categories",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Split Main Categories": {
+      "main": [
+        [
+          {
+            "node": "Get Main Category Page",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Main Category Page": {
+      "main": [
+        [
+          {
+            "node": "Extract Sub Categories",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {},
+  "versionId": "1"
+}
