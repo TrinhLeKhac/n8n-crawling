@@ -19,50 +19,86 @@ def setup_driver():
     driver.execute_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
     return driver
 
-def crawl_companies_from_page(driver, category_name, max_companies=5, crawled_companies=None):
-    """Crawl companies from current page, skipping already crawled ones"""
+def crawl_companies_from_page(driver, category_name, crawled_companies=None):
+    """Crawl companies from all pages, skipping already crawled ones"""
     if crawled_companies is None:
         crawled_companies = set()
     
     companies = []
+    page = 1
+    
     try:
         print(f"Crawling {category_name}")
-        time.sleep(3)
         
-        # Find all companies and save links first
-        company_links = []
-        company_divs = driver.find_elements(By.CSS_SELECTOR, ".yp_noidunglistings .fs-5.pb-0.text-capitalize a")
-        
-        for div in company_divs[:max_companies]:
-            try:
-                name = div.text.strip()
-                href = div.get_attribute('href')
-                if name and href:
-                    company_links.append((name, href))
-            except:
-                continue
-        
-        print(f"  Found {len(company_links)} companies")
-        if crawled_companies:
-            print(f"  Already crawled: {len(crawled_companies)} companies")
-        
-        for name, href in company_links:
-            try:
-                # Skip if company already crawled
-                if name in crawled_companies:
-                    print(f"    Skipping already crawled: {name}")
+        while True:
+            print(f"  Page {page}...")
+            time.sleep(3)
+            
+            # Find all companies and save links first
+            company_links = []
+            company_divs = driver.find_elements(By.CSS_SELECTOR, ".yp_noidunglistings .fs-5.pb-0.text-capitalize a")
+            
+            if not company_divs:
+                print(f"  No companies found on page {page}")
+                break
+            
+            for div in company_divs:
+                try:
+                    name = div.text.strip()
+                    href = div.get_attribute('href')
+                    if name and href:
+                        company_links.append((name, href))
+                except:
                     continue
+            
+            print(f"  Found {len(company_links)} companies on page {page}")
+            
+            for name, href in company_links:
+                try:
+                    # Skip if company already crawled
+                    if name in crawled_companies:
+                        print(f"    Skipping already crawled: {name}")
+                        continue
+                        
+                    print(f"    Crawling: {name}")
+                    company_info = extract_company_detail(driver, href, category_name)
+                    if company_info:
+                        companies.append(company_info)
+                        print(f"    ✓ {company_info['Tên công ty']}")
+                except Exception as e:
+                    print(f"    ✗ Error crawling {name}: {e}")
+                    continue
+            
+            # Try to find next page
+            try:
+                page_links = driver.find_elements(By.CSS_SELECTOR, "#paging > a")
+                next_page_found = False
+                
+                for link in page_links:
+                    link_text = link.text.strip()
+                    # Find next page (page number greater than current page)
+                    if link_text.isdigit() and int(link_text) == page + 1:
+                        print(f"  Moving to page {page + 1}")
+                        driver.execute_script("arguments[0].click();", link)
+                        page += 1
+                        next_page_found = True
+                        # Wait for new page to load
+                        WebDriverWait(driver, 10).until(
+                            EC.presence_of_element_located(
+                                (By.CSS_SELECTOR, ".yp_noidunglistings .fs-5.pb-0.text-capitalize a"))
+                        )
+                        time.sleep(3)
+                        break
+                
+                if not next_page_found:
+                    print(f"  No more pages found. Crawled {page} pages total.")
+                    break
                     
-                print(f"    Crawling: {name}")
-                company_info = extract_company_detail(driver, href, category_name)
-                if company_info:
-                    companies.append(company_info)
-                    print(f"    ✓ {company_info['Tên công ty']}")
             except Exception as e:
-                print(f"    ✗ Error crawling {name}: {e}")
-                continue
+                print(f"  Error finding next page: {e}")
+                break
         
-        print(f"  Crawled {len(companies)} new companies")
+        print(f"  Crawled {len(companies)} new companies from {page} pages")
         
     except Exception as e:
         print(f"  Error crawling companies: {e}")
@@ -241,7 +277,6 @@ def crawl_sub_categories(driver, main_category_name, existing_metadata):
                 companies = crawl_companies_from_page(
                     driver, 
                     f"{main_category_name} - {sub_name}", 
-                    max_companies=5,  # Adjust as needed
                     crawled_companies=crawled_companies
                 )
                 
@@ -281,20 +316,58 @@ def save_batch(metadata_list, companies_list):
         # Save metadata
         if metadata_list:
             metadata_df = pd.DataFrame(metadata_list)
-            if os.path.exists('metadata.xlsx'):
-                existing_metadata = pd.read_excel('metadata.xlsx')
+            if os.path.exists('output/metadata.xlsx'):
+                existing_metadata = pd.read_excel('output/metadata.xlsx')
                 metadata_df = pd.concat([existing_metadata, metadata_df], ignore_index=True)
-            metadata_df.to_excel('metadata.xlsx', index=False)
+            
+            os.makedirs('output', exist_ok=True)
+            metadata_df.to_excel('output/metadata.xlsx', index=False)
             print(f"  Saved {len(metadata_list)} metadata records")
         
-        # Save company details
+        # Save company details - each main category as separate sheet
         if companies_list:
             companies_df = pd.DataFrame(companies_list)
-            if os.path.exists('company_details.xlsx'):
-                existing_companies = pd.read_excel('company_details.xlsx')
-                companies_df = pd.concat([existing_companies, companies_df], ignore_index=True)
-            companies_df.to_excel('company_details.xlsx', index=False)
-            print(f"  Saved {len(companies_list)} company details")
+            
+            # Group companies by main category
+            categories = companies_df['Ngành'].unique()
+            
+            os.makedirs('output', exist_ok=True)
+            company_file = 'output/company_details.xlsx'
+            
+            # Load existing data if file exists
+            existing_sheets = {}
+            if os.path.exists(company_file):
+                try:
+                    with pd.ExcelFile(company_file) as xls:
+                        for sheet_name in xls.sheet_names:
+                            existing_sheets[sheet_name] = pd.read_excel(xls, sheet_name=sheet_name)
+                except Exception as e:
+                    print(f"  Warning: Could not read existing file: {e}")
+            
+            # Prepare data for each category
+            with pd.ExcelWriter(company_file, engine='openpyxl', mode='w') as writer:
+                # Write existing sheets first
+                for sheet_name, df in existing_sheets.items():
+                    df.to_excel(writer, sheet_name=sheet_name, index=False)
+                
+                # Add new data for each category
+                for category in categories:
+                    category_companies = companies_df[companies_df['Ngành'] == category]
+                    
+                    # Clean sheet name (Excel sheet names have restrictions)
+                    sheet_name = category.replace('/', '_').replace('\\', '_').replace('*', '_').replace('?', '_').replace(':', '_').replace('[', '_').replace(']', '_')[:31]
+                    
+                    if sheet_name in existing_sheets:
+                        # Append to existing sheet data
+                        combined_df = pd.concat([existing_sheets[sheet_name], category_companies], ignore_index=True)
+                        combined_df.to_excel(writer, sheet_name=sheet_name, index=False)
+                        print(f"  Updated sheet '{sheet_name}' with {len(category_companies)} companies")
+                    else:
+                        # Create new sheet
+                        category_companies.to_excel(writer, sheet_name=sheet_name, index=False)
+                        print(f"  Created new sheet '{sheet_name}' with {len(category_companies)} companies")
+            
+            print(f"  Saved {len(companies_list)} company details across {len(categories)} categories")
             
     except Exception as e:
         print(f"  Error saving batch: {e}")
@@ -302,8 +375,8 @@ def save_batch(metadata_list, companies_list):
 def load_progress():
     """Load existing metadata to determine crawling progress"""
     try:
-        if os.path.exists('metadata.xlsx'):
-            metadata_df = pd.read_excel('metadata.xlsx')
+        if os.path.exists('output/metadata.xlsx'):
+            metadata_df = pd.read_excel('output/metadata.xlsx')
             return metadata_df
         return pd.DataFrame()
     except Exception as e:
