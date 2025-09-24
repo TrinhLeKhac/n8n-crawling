@@ -94,16 +94,14 @@ class SSHConnection:
 
 # Example usage
 if __name__ == "__main__":
-    # Replace with your server details
     ssh = SSHConnection(
-        hostname="YOUR_SERVER_IP",
-        username="YOUR_USERNAME", 
-        password="YOUR_PASSWORD",  # or use key_path="/path/to/private/key"
+        hostname=input("Server IP: "),
+        username=input("Username: "), 
+        password=input("Password: "),
         port=22
     )
     
     if ssh.connect():
-        # Test connection
         result = ssh.execute_command("pwd && ls -la")
         print(result)
         ssh.close()
