@@ -2,7 +2,7 @@
 import paramiko
 from pathlib import Path
 
-# Thông tin server
+# Server connection details
 HOST = input("Server IP: ")
 USERNAME = input("Username: ")
 PASSWORD = input("Password: ")
@@ -13,17 +13,17 @@ ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
 
 try:
     ssh.connect(HOST, PORT, USERNAME, PASSWORD)
-    print(f"✓ Đã kết nối tới {HOST}")
+    print(f"✓ Connected to {HOST}")
     
-    # Kiểm tra và tạo folder n8n-crawling nếu chưa có
+    # Check and create n8n-crawling folder if not exists
     stdin, stdout, stderr = ssh.exec_command("ls -la /root/n8n-crawling")
     if stderr.read().decode():
-        print("Tạo folder n8n-crawling...")
+        print("Creating n8n-crawling folder...")
         ssh.exec_command("mkdir -p /root/n8n-crawling/output")
     else:
-        print("Folder n8n-crawling đã tồn tại")
+        print("n8n-crawling folder already exists")
     
-    # Cài đặt môi trường
+    # Setup environment
     setup_commands = [
         "apt update",
         "apt install -y python3-pip",
@@ -38,16 +38,16 @@ try:
         "chmod +x /usr/local/bin/chromedriver"
     ]
     
-    print("Đang cài đặt môi trường...")
+    print("Setting up environment...")
     for cmd in setup_commands:
         print(f"Executing: {cmd}")
         stdin, stdout, stderr = ssh.exec_command(cmd)
         stdout.read()  # Wait for completion
     
-    print("✓ Đã cài xong môi trường")
-    print("Sử dụng run_crawler.py để chạy crawler")
+    print("✓ Environment setup completed")
+    print("Use run_crawler.py to execute crawler")
     
 except Exception as e:
-    print(f"Lỗi: {e}")
+    print(f"Error: {e}")
 finally:
     ssh.close()
