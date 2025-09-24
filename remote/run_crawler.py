@@ -26,10 +26,16 @@ try:
     try:
         sftp = ssh.open_sftp()
         current_dir = Path(__file__).parent
-        output_path = current_dir.parent / "output" / "company_details.xlsx"
-        sftp.get("/root/n8n-crawling/output/company_details.xlsx", str(output_path))
+        
+        # Download cả 2 files
+        files = ["company_details.xlsx", "metadata.xlsx"]
+        for file in files:
+            remote_path = f"/root/n8n-crawling/output/{file}"
+            local_path = current_dir.parent / "output" / file
+            sftp.get(remote_path, str(local_path))
+            print(f"✓ Đã download {file}")
+        
         sftp.close()
-        print("✓ Đã download kết quả")
     except Exception as e:
         print(f"Lỗi download: {e}")
     
