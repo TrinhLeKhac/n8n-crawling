@@ -17,6 +17,17 @@ RUN apk add --no-cache \
 ENV CHROME_BIN=/usr/bin/chromium-browser
 ENV CHROME_PATH=/usr/lib/chromium/
 
+# Install Node.js packages for n8n
+RUN npm install -g cheerio
+
+# Switch to node user and install cheerio locally for n8n
+USER node
+WORKDIR /home/node
+RUN npm install cheerio
+
+# Switch back to root for remaining setup
+USER root
+
 # Copy requirements and install Python packages
 COPY requirements.txt /app/
 RUN pip3 install --no-cache-dir --break-system-packages -r /app/requirements.txt

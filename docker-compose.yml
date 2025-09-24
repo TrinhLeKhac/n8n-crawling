@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   postgres:
     image: postgres:15
@@ -39,6 +37,7 @@ services:
     volumes:
       - ~/.n8n:/home/node/.n8n
       - ./output:/app/output
+      - ./package.json:/home/node/package.json
       - /dev/shm:/dev/shm
     depends_on:
       postgres:
