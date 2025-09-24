@@ -2,19 +2,18 @@
 import paramiko
 from pathlib import Path
 
-# Import config (tạo file config.py từ config_template.py)
-try:
-    from config import SERVER_CONFIG
-except ImportError:
-    print("Tạo file config.py từ config_template.py và điền thông tin server")
-    exit(1)
+# Thông tin server
+HOST = input("Server IP: ")
+USERNAME = input("Username: ")
+PASSWORD = input("Password: ")
+PORT = 22
 
 ssh = paramiko.SSHClient()
 ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
 
 try:
-    ssh.connect(**SERVER_CONFIG)
-    print(f"✓ Đã kết nối tới {SERVER_CONFIG['HOST']}")
+    ssh.connect(HOST, PORT, USERNAME, PASSWORD)
+    print(f"✓ Đã kết nối tới {HOST}")
     
     # Setup và chạy
     commands = [
