@@ -14,11 +14,15 @@ try:
     ssh.connect(HOST, PORT, USERNAME, PASSWORD)
     print(f"✓ Connected to {HOST}")
     
-    # Pull latest code from Git
+    # Check OS and install git
+    stdin, stdout, stderr = ssh.exec_command("which apt || which yum")
+    pkg_manager = "apt" if "apt" in stdout.read().decode() else "yum"
+    
+    # Install git and handle repository
     git_commands = [
-        "apt update && apt install -y git",
-        "cd /root/n8n-crawling && git pull origin main",
-        "cd /root/n8n-crawling && source venv/bin/activate && pip install -r requirements.txt"
+        f"{pkg_manager} update && {pkg_manager} install -y git" if pkg_manager == "apt" else f"{pkg_manager} update -y && {pkg_manager} install -y git",
+        "cd /root && if [ ! -d n8n-crawling ]; then git clone https://github.com/TrinhLeKhac/n8n-crawling.git; else cd n8n-crawling && git pull origin main; fi",
+        "cd /root/n8n-crawling && if [ -f venv/bin/activate ]; then source venv/bin/activate && pip install -r requirements.txt; else echo 'Virtual environment not found, run setup_env.py first'; fi"
     ]
     
     print("Pulling latest code from Git...")

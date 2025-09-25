@@ -23,20 +23,33 @@ try:
     else:
         print("n8n-crawling folder already exists")
     
-    # Setup environment
-    setup_commands = [
-        "apt update",
-        "apt install -y python3-pip python3-venv",
-        "apt install -y wget unzip",
-        "wget -q -O - https://dl.google.com/linux/linux_signing_key.pub | apt-key add -",
-        "echo 'deb [arch=amd64] http://dl.google.com/linux/chrome/deb/ stable main' >> /etc/apt/sources.list.d/google-chrome.list",
-        "apt update",
-        "apt install -y google-chrome-stable",
+    # Check OS and setup environment
+    stdin, stdout, stderr = ssh.exec_command("which apt || which yum")
+    pkg_manager = "apt" if "apt" in stdout.read().decode() else "yum"
+    
+    if pkg_manager == "apt":
+        setup_commands = [
+            "apt update",
+            "apt install -y python3-pip python3-venv wget unzip",
+            "wget -q -O - https://dl.google.com/linux/linux_signing_key.pub | apt-key add -",
+            "echo 'deb [arch=amd64] http://dl.google.com/linux/chrome/deb/ stable main' >> /etc/apt/sources.list.d/google-chrome.list",
+            "apt update",
+            "apt install -y google-chrome-stable"
+        ]
+    else:
+        setup_commands = [
+            "yum update -y",
+            "yum install -y python3-pip wget unzip",
+            "yum install -y chromium"
+        ]
+    
+    # Common commands
+    setup_commands.extend([
         "wget -O /tmp/chromedriver.zip https://chromedriver.storage.googleapis.com/114.0.5735.90/chromedriver_linux64.zip",
         "unzip /tmp/chromedriver.zip -d /usr/local/bin/",
         "chmod +x /usr/local/bin/chromedriver",
         "cd /root/n8n-crawling && python3 -m venv venv"
-    ]
+    ])
     
     print("Setting up environment...")
     for cmd in setup_commands:
