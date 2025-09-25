@@ -18,7 +18,7 @@ try:
     git_commands = [
         "apt update && apt install -y git",
         "cd /root/n8n-crawling && git pull origin main",
-        "cd /root/n8n-crawling && pip3 install -r requirements.txt"
+        "cd /root/n8n-crawling && source venv/bin/activate && pip install -r requirements.txt"
     ]
     
     print("Pulling latest code from Git...")

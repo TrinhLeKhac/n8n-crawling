@@ -17,64 +17,35 @@ This folder contains scripts for deploying and running the YellowPages crawler o
 python3 setup_env.py
 ```
 - Creates `/root/n8n-crawling` folder if not exists
-- Installs Python3, pip, Chrome, ChromeDriver
-- Installs Python packages (selenium, pandas, openpyxl)
+- Installs Python3, pip, venv, Chrome, ChromeDriver
+- Creates virtual environment in `/root/n8n-crawling/venv`
 
 ### 2. Deploy Code
 ```bash
 python3 update_code.py
 ```
 - Pulls latest code from GitHub repository
+- Activates virtual environment
 - Installs/updates requirements from `requirements.txt`
 
 ### 3. Run Crawler
 ```bash
 python3 run_crawler.py
 ```
+- Activates virtual environment
 - Executes `yellowpages_full_crawler.py` on remote server
 - Shows real-time output
 - Downloads both result files:
   - `company_details.xlsx`
   - `metadata.xlsx`
 
-## Complete Setup Process
-
-For a brand new server:
-
-1. **Environment Setup** (one time only)
-   ```bash
-   python3 setup_env.py
-   ```
-
-2. **Get Code** (first time or when updating)
-   ```bash
-   python3 update_code.py
-   ```
-
-3. **Run Crawler** (anytime you want to crawl)
-   ```bash
-   python3 run_crawler.py
-   ```
-
-## Subsequent Runs
-
-After initial setup:
-
-- **Update code**: `python3 update_code.py`
-- **Run crawler**: `python3 run_crawler.py`
-
-## Requirements
-
-- Remote server with SSH access
-- Ubuntu/Debian-based Linux server
-- Root or sudo access
-- Internet connection for package installation
 
 ## Server Structure
 
 After setup, the remote server will have:
 ```
 /root/n8n-crawling/
+├── venv/                          # Virtual environment
 ├── yellowpages_full_crawler.py
 ├── requirements.txt
 ├── output/
@@ -82,10 +53,3 @@ After setup, the remote server will have:
 │   └── metadata.xlsx
 └── ... (other project files)
 ```
-
-## Troubleshooting
-
-- **Connection failed**: Check server IP, username, password
-- **Permission denied**: Ensure user has sudo/root access
-- **Chrome installation failed**: Server might need different Chrome version
-- **Download failed**: Check if crawler completed successfully and output files exist

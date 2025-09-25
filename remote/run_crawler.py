@@ -16,7 +16,7 @@ try:
     print(f"✓ Connected to {HOST}")
     
     # Run crawler on remote server (assumes folder exists from Git)
-    stdin, stdout, stderr = ssh.exec_command("cd /root/n8n-crawling && python3 yellowpages_full_crawler.py")
+    stdin, stdout, stderr = ssh.exec_command("cd /root/n8n-crawling && source venv/bin/activate && python yellowpages_full_crawler.py")
     
     # Display real-time output
     for line in stdout:
