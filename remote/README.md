@@ -18,6 +18,7 @@ python3 update_code.py
 ```
 - Installs Git
 - Clones repository (first time) or pulls updates
+- Copies local output folder to remote (first time only)
 - Activates virtual environment
 - Installs/updates requirements from `requirements.txt`
 

@@ -36,6 +36,32 @@ try:
         if error:
             print(f"Error: {error}")
     
+    # Copy output folder from local to remote (first time setup)
+    stdin, stdout, stderr = ssh.exec_command("ls -la /root/n8n-crawling/output")
+    if stderr.read().decode():  # output folder doesn't exist
+        print("Copying output folder from local...")
+        try:
+            sftp = ssh.open_sftp()
+            from pathlib import Path
+            
+            # Create output folder on remote
+            ssh.exec_command("mkdir -p /root/n8n-crawling/output")
+            
+            # Copy files from local output folder
+            current_dir = Path(__file__).parent
+            local_output = current_dir.parent / "output"
+            
+            if local_output.exists():
+                for file in local_output.glob("*"):
+                    if file.is_file():
+                        remote_path = f"/root/n8n-crawling/output/{file.name}"
+                        sftp.put(str(file), remote_path)
+                        print(f"✓ Copied {file.name}")
+            
+            sftp.close()
+        except Exception as e:
+            print(f"Error copying output folder: {e}")
+    
     print("✓ Code updated from Git")
     print("Use run_crawler.py to execute crawler")
     
