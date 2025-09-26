@@ -8,16 +8,37 @@ import time
 import os
 
 def setup_driver():
-    """Setup Chrome driver"""
-    chrome_options = Options()
-    chrome_options.add_argument("--disable-blink-features=AutomationControlled")
-    chrome_options.add_experimental_option("excludeSwitches", ["enable-automation"])
-    chrome_options.add_experimental_option('useAutomationExtension', False)
-    chrome_options.add_argument("--user-agent=Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
-    
-    driver = webdriver.Chrome(options=chrome_options)
-    driver.execute_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
-    return driver
+    """Setup Chrome driver, fallback to Firefox if Chrome fails"""
+    # Try Chrome first
+    try:
+        chrome_options = Options()
+        chrome_options.add_argument("--disable-blink-features=AutomationControlled")
+        chrome_options.add_experimental_option("excludeSwitches", ["enable-automation"])
+        chrome_options.add_experimental_option('useAutomationExtension', False)
+        chrome_options.add_argument(
+            "--user-agent=Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+
+        driver = webdriver.Chrome(options=chrome_options)
+        driver.execute_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
+        print("Using Chrome browser")
+        return driver
+    except Exception as e:
+        print(f"Chrome failed: {e}")
+
+    # Fallback to Firefox
+    try:
+        from selenium.webdriver.firefox.options import Options as FirefoxOptions
+        firefox_options = FirefoxOptions()
+        firefox_options.add_argument("--headless")
+        firefox_options.set_preference("general.useragent.override",
+                                       "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+
+        driver = webdriver.Firefox(options=firefox_options)
+        print("Using Firefox browser")
+        return driver
+    except Exception as e:
+        print(f"Firefox failed: {e}")
+        raise Exception("Both Chrome and Firefox failed. Please check browser installation.")
 
 def crawl_companies_from_page(driver, category_name, crawled_companies=None):
     """Crawl companies from all pages, skipping already crawled ones"""
