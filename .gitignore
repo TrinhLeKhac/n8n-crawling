@@ -29,4 +29,4 @@ venv/
 
 # OS
 .DS_Store
-Thumbs.db
+Thumbs.dbcrawler.pid
