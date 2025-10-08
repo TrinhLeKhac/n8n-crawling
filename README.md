@@ -1,234 +1,378 @@
-# YellowPages Vietnam Crawler with n8n
+# YellowPages Vietnam Crawler
 
-A comprehensive web crawler for extracting company information from yellowpages.vn, integrated with n8n workflow automation and PostgreSQL database.
+A comprehensive web crawler for extracting company information from yellowpages.vn with resume capability and background execution.
 
 ## Project Structure
 
 ```
-n8n/
-├── yellowpages_full_crawler.py    # Main crawler script
-├── requirements.txt               # Python dependencies
-├── Dockerfile                     # Docker image configuration
-├── docker-compose.yml            # Services orchestration
-├── build.sh                      # Build and deployment script
+n8n-crawling/
+├── scan_metadata.py              # Initial metadata scanner (run once to generate categories_metadata.xlsx)
+├── crawl_by_metadata.py          # Main crawler script
+├── run_crawler.sh                # Background execution wrapper
+├── monitor.sh                    # System monitoring script
+├── com.crawler.yellowpages.plist # macOS LaunchAgent service file
+├── requirements.txt              # Python dependencies
+├── venv/                         # Virtual environment
+│   ├── bin/activate              # Virtual environment activation
+│   └── lib/python3.10/           # Python packages
 ├── output/                       # Crawler output directory
-│   ├── metadata.xlsx             # Category and company mapping
-│   └── company_details.xlsx      # Detailed company information
-└── README.md                     # This file
+│   ├── categories_metadata.xlsx  # Input: Category metadata (main_category, sub_category, number_website)
+│   ├── metadata_crawled.xlsx     # Progress: Crawling progress tracking (main_category, sub_category, number_company_crawled)
+│   └── *_company_details.xlsx    # Output: Company data by category (do_gia_dung_company_details.xlsx, bep_gas_company_details.xlsx, etc.)
+├── crawler.log                   # Real-time output logs
+├── crawler.error.log            # Error logs
+├── crawler.pid                   # Process ID file (for stopping background crawler)
+└── README.md                     # This documentation
+```
+
+## Crawling Logic Flow
+
+### 0. **Initial Setup (Run Once)**
+```
+Run scan_metadata.py → Scan yellowpages.vn → Extract all categories & subcategories
+                     ↓
+Count companies in each subcategory → Generate categories_metadata.xlsx
+                     ↓
+This file becomes input for main crawler (defines crawling targets & stop points)
+```
+
+### 1. **Initialization & Resume Detection**
+```
+Start → Load categories_metadata.xlsx → Check metadata_crawled.xlsx
+                                      ↓
+Find last crawled position → Jump to resume position (skip completed subcategories)
+                           ↓
+Start crawling from exact position (no scanning from beginning)
+```
+
+### 2. **Category Navigation Flow**
+```
+yellowpages.vn homepage
+        ↓
+Find main category link (.p-2.ps-1 a.text-dark)
+        ↓
+Navigate to main category page
+        ↓
+Find subcategory link (.col-sm-6.p-4.pe-3.pt-0.pb-2 a)
+        ↓
+Navigate to subcategory listing page
+```
+
+### 3. **Company Extraction Flow**
+```
+Subcategory page → Extract companies (.rounded-4.border.bg-white.shadow-sm.mb-3.pb-4)
+                ↓
+Get company name & URL (.yp_noidunglistings .fs-5.pb-0.text-capitalize a)
+                ↓
+Get order number (.yp_sothutu .yp_sothutu_txt small)
+                ↓
+Visit company detail page → Extract all information → Return to subcategory page
+                ↓
+Next company → Repeat until page complete
+                ↓
+Next page (?page=2, ?page=3...) → Repeat until subcategory complete
+                ↓
+Next subcategory → Repeat until all categories complete
+```
+
+### 4. **Data Extraction Details**
+For each company detail page, extract:
+- **Name**: `.fs-3.text-capitalize`
+- **Address**: First `.m-0.pb-2` element
+- **Phone/Hotline**: `.fw-semibold.fs18` elements
+- **Email**: `<a>` tag in contact section
+- **Website**: `.m-0.fs18` element
+- **Introduction**: Siblings of `.yp_h2_border` containing "giới thiệu công ty"
+- **Business**: `.yp_div_nganh_thitruong` element
+- **Products**: `.yp_div_sanphamdichvu1` + `.yp_div_sanphamdichvu2` elements
+
+### 5. **Progress Tracking & Data Persistence**
+```
+Every 10 companies crawled:
+    ↓
+Update metadata_crawled.xlsx (progress tracking)
+    ↓
+Save to category-specific Excel file (do_gia_dung_company_details.xlsx)
+    ↓
+Continue crawling...
 ```
 
 ## Features
 
-- **Hierarchical Crawling**: Main categories → Sub categories → Companies
-- **Resume Capability**: Automatically resumes from last crawled category
-- **Batch Processing**: Saves data every 50 companies
+- **Smart Resume**: Automatically resumes from last crawled position
+- **Background Execution**: Runs continuously with auto-restart
+- **Progress Tracking**: Real-time progress monitoring and logging
+- **Anti-Sleep**: Prevents system sleep during crawling (`caffeinate`)
+- **Batch Processing**: Saves data every 10 companies
 - **Detailed Extraction**: Company name, address, phone, email, website, introduction, business info, products/services
-- **Docker Integration**: Containerized with n8n and PostgreSQL
+- **Unbuffered Output**: Real-time log viewing with `python -u`
 - **Anti-Detection**: Chrome options to avoid bot detection
+- **Duplicate Prevention**: Skips already crawled companies
 
 ## Data Structure
 
-### Metadata File (metadata.xlsx)
-| Column | Description |
-|--------|-------------|
-| main_category | Primary business category |
-| sub_category | Specific industry subcategory |
-| company | Company name |
+### Input File: categories_metadata.xlsx
+| Column | Description | Example |
+|--------|-------------|---------|
+| main_category | Primary business category | Đồ Gia Dụng |
+| sub_category | Specific industry subcategory | Đồ Gia Dụng - Sản Xuất và Bán Buôn |
+| number_website | Total companies in subcategory | 299 |
 
-### Company Details File (company_details.xlsx)
-| Column | Description |
-|--------|-------------|
-| Tên công ty | Company name |
-| Địa chỉ | Full address |
-| Điện thoại | Primary phone number |
-| Hotline | Secondary phone/hotline |
-| Email | Contact email |
-| Website | Company website |
-| Giới thiệu | Company introduction |
-| Ngành nghề | Business industry |
-| Sản phẩm dịch vụ | Products and services |
-| Ngành | Category classification |
+### Progress File: metadata_crawled.xlsx
+| Column | Description | Example |
+|--------|-------------|---------|
+| main_category | Primary business category | Đồ Gia Dụng |
+| sub_category | Specific industry subcategory | Đồ Gia Dụng - Sản Xuất và Bán Buôn |
+| number_company_crawled | Companies already crawled | 252 |
+
+### Output Files: *_company_details.xlsx
+| Column | Description | Example |
+|--------|-------------|---------|
+| Tên công ty | Company name | Công Ty TNHH ABC |
+| Địa chỉ | Full address | 123 Nguyễn Văn Cừ, Quận 1, TP.HCM |
+| Điện thoại | Primary phone number | 028.1234.5678 |
+| Hotline | Secondary phone/hotline | 0901.234.567 |
+| Email | Contact email | info@abc.com |
+| Website | Company website | www.abc.com |
+| Giới thiệu | Company introduction | Công ty chuyên sản xuất... |
+| Ngành nghề | Business industry | Sản xuất đồ gia dụng |
+| Sản phẩm dịch vụ | Products and services | Nồi, chảo, bếp gas... |
+| Ngành | Category classification | Đồ Gia Dụng |
 
 ## Quick Start
 
 ### Prerequisites
-- Docker and Docker Compose
-- Git
+- Python 3.10+
+- Chrome browser
+- Virtual environment
 
 ### Installation
 
-1. **Clone and navigate to project**
+1. **Setup virtual environment**
 ```bash
-git clone <repository>
-cd n8n
+python -m venv venv
+source venv/bin/activate  # On macOS/Linux
+pip install -r requirements.txt
 ```
 
-2. **Build and start services**
+2. **Make scripts executable**
 ```bash
-./build.sh
+chmod +x run_crawler.sh
+chmod +x monitor.sh
 ```
 
-Or manually:
+3. **Generate initial metadata (run once)**
 ```bash
-docker build -t trinhlk2:n8n-crawling .
-docker-compose up -d
-```
+# Scan yellowpages.vn to generate categories_metadata.xlsx
+python scan_metadata.py
 
-3. **Access services**
-- n8n: http://localhost:5678
-- PostgreSQL: localhost:5432 (postgres/postgres)
+# This creates output/categories_metadata.xlsx with:
+# - All main categories and subcategories
+# - Company count for each subcategory
+# - Crawling targets and stop points
+```
 
 ### Running the Crawler
 
-#### Option 1: Direct Python execution
+#### Option 1: Background execution (Recommended)
 ```bash
-python yellowpages_full_crawler.py
+# Run in background with auto-restart
+nohup ./run_crawler.sh > crawler.log 2>&1 &
+
+# Save PID for later stopping
+echo $! > crawler.pid
 ```
 
-#### Option 2: Inside Docker container
+#### Option 2: Direct execution
 ```bash
-docker-compose exec n8n python /app/yellowpages_full_crawler.py
+# Run directly (terminal must stay open)
+./run_crawler.sh
 ```
 
-#### Option 3: Via n8n workflow
-1. Access n8n at http://localhost:5678
-2. Create workflow with Execute Command node
-3. Command: `python /app/yellowpages_full_crawler.py`
+## Monitoring and Control
+
+### Real-time Log Viewing
+```bash
+# View live crawler output
+tail -f crawler.log
+
+# View error logs
+tail -f crawler.error.log
+```
+
+### System Monitoring
+```bash
+# Check crawler status and system health
+./monitor.sh
+
+# Check running processes
+ps aux | grep crawl
+
+# Check memory usage
+ps aux | grep python | head -5
+```
+
+**monitor.sh output example:**
+```
+=== Crawler Status ===
+Time: Wed Dec 13 10:30:45 PST 2023
+
+✅ Crawler is running
+PID: 12345
+
+🌡️  CPU Temperature: 45°C
+💾 Memory usage:
+12345  2.5  1.2  python crawl_by_metadata.py
+
+📈 Latest progress:
+Updated progress: Đồ Gia Dụng - Bếp Gas: 45 companies
+
+📝 Log tail:
+[16/100] Processing: Đồ Gia Dụng - Bếp Gas...
+    Page 2... (45/140)
+    ✓ Thiết Bị Bếp ABC (46/140)
+```
+
+### Stopping the Crawler
+```bash
+# Stop background crawler
+kill $(cat crawler.pid)
+
+# Or force stop all crawler processes
+pkill -f "run_crawler.sh"
+```
 
 ## Configuration
 
-### Crawler Settings
-Edit `yellowpages_full_crawler.py`:
-```python
-max_companies=5  # Companies per subcategory
-time.sleep(3)    # Delay between requests
-```
-
 ### Chrome Options
 ```python
-chrome_options.add_argument("--headless")  # Run headless
-chrome_options.add_argument("--no-sandbox")  # Docker compatibility
+chrome_options.add_argument("--headless")           # Run headless
+chrome_options.add_argument("--no-sandbox")         # Security
+chrome_options.add_argument("--disable-blink-features=AutomationControlled")
 ```
 
-### Database Connection
-PostgreSQL connection details in `docker-compose.yml`:
-```yaml
-environment:
-  - DB_TYPE=postgresdb
-  - DB_POSTGRESDB_HOST=postgres
-  - DB_POSTGRESDB_DATABASE=n8n
-  - DB_POSTGRESDB_USER=postgres
-  - DB_POSTGRESDB_PASSWORD=postgres
-```
+### Background Script Features
+- **Auto-restart**: Restarts crawler if it crashes
+- **Sleep prevention**: Uses `caffeinate` to prevent system sleep
+- **Virtual environment**: Automatically activates venv
+- **Unbuffered output**: Uses `python -u` for real-time logs
 
-## How It Works
+## Output Files
 
-### 1. Main Category Discovery
-- Visits yellowpages.vn homepage
-- Extracts all main categories from `.p-2.ps-1 a.text-dark` elements
-- Skips already crawled categories (resume capability)
-
-### 2. Sub Category Extraction
-- For each main category, finds sub categories
-- Uses `.col-sm-6.p-4.pe-3.pt-0.pb-2 a` selector
-- Extracts category name and URL
-
-### 3. Company List Crawling
-- Navigates to each sub category page
-- Finds company links via `.yp_noidunglistings .fs-5.pb-0.text-capitalize a`
-- Collects company names and detail page URLs
-
-### 4. Detailed Information Extraction
-- Visits each company's detail page
-- Extracts comprehensive information:
-  - **Name**: `.fs-3.text-capitalize`
-  - **Address**: First `.m-0.pb-2` element (includes icon + address + city)
-  - **Phone/Hotline**: `.fw-semibold.fs18` elements in second `.m-0.pb-2`
-  - **Email**: `<a>` tag in third `.m-0.pb-2`
-  - **Website**: `.m-0.fs18` element
-  - **Introduction**: Siblings of `.yp_h2_border` containing "giới thiệu công ty"
-  - **Business**: `.yp_div_nganh_thitruong` element
-  - **Products**: `.yp_div_sanphamdichvu1` + `.yp_div_sanphamdichvu2` elements
-
-### 5. Data Persistence
-- Saves metadata and company details every 50 records
-- Appends to existing Excel files
-- Maintains crawling progress for resume capability
-
-## Monitoring and Debugging
-
-### View Logs
-```bash
-docker-compose logs -f n8n
-```
-
-### Check Output Files
-```bash
-ls -la output/
-```
-
-### Monitor Progress
+### Progress Tracking
 The crawler prints detailed progress information:
 ```
+Last progress: Đồ Gia Dụng - Đồ Gia Dụng - Sản Xuất và Bán Buôn: 252 companies
+Starting from position 15/100
+[16/100] Processing: Đồ Gia Dụng - Bếp Gas...
+    Page 1... (0/140)
+    Found 45 listing containers in div_listing
+      Found #1: Thiết Bị Bếp Thuận Long
+      Crawling #1: Thiết Bị Bếp Thuận Long
+      ✓ Thiết Bị Bếp Thuận Long (1/140)
+```
+
+### Sample Output
+```
+Scanning yellowpages.vn categories...
 Found 25 main categories
-[1/25] Crawling category: An Ninh - Bảo Vệ
-  Found 8 sub categories
-    Crawling sub category: Bảo vệ
-      Found 12 companies
-        Crawling: CÔNG TY TNHH BẢO VỆ ABC
-          Name: CÔNG TY TNHH BẢO VỆ ABC
-          Address: 123 Nguyễn Văn Cừ, Quận 1, TP. HCM
-          Phone: 028.1234.5678
-          ...
+[1/25] Scanning: Đồ Gia Dụng
+  Found 8 subcategories
+    Bếp Gas (Đơn, Đôi, Hồng Ngoại, Âm): 140 companies
+    Đồ Gia Dụng - Sản Xuất và Bán Buôn: 299 companies
+    Nồi, Chảo Chống Dính: 89 companies
+    ...
+Saved metadata to output/categories_metadata.xlsx
+Total: 1,247 subcategories with 45,892 companies
 ```
 
 ## Troubleshooting
 
 ### Common Issues
 
-1. **Chrome not found**
+1. **Multiple crawlers running**
 ```bash
-# Install Chrome in container
-docker-compose exec n8n apk add chromium chromium-chromedriver
+# Check for duplicate processes
+ps aux | grep crawl
+
+# Kill old processes
+pkill -f "run_crawler.sh"
 ```
 
-2. **Permission denied**
+2. **Permission denied (macOS Desktop)**
 ```bash
-# Fix file permissions
-sudo chown -R $USER:$USER output/
+# Move project out of Desktop folder
+mv ~/Desktop/Others/n8n-crawling ~/n8n-crawling
+cd ~/n8n-crawling
 ```
 
-3. **Memory issues**
+3. **Virtual environment not found**
 ```bash
-# Increase shared memory
-docker-compose down
-# Edit docker-compose.yml: shm_size: 4gb
-docker-compose up -d
+# Create virtual environment
+python -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt
 ```
 
-4. **Resume not working**
-- Check if `metadata.xlsx` exists in output directory
-- Verify file permissions
+4. **Chrome driver issues**
+```bash
+# Install/update Chrome
+brew install --cask google-chrome
+
+# Install ChromeDriver
+brew install chromedriver
+```
+
+5. **Resume not working**
+- Check if `metadata_crawled.xlsx` exists in output directory
+- Verify file permissions: `chmod 644 output/*.xlsx`
 - Check for corrupted Excel files
 
-### Performance Optimization
+### Performance Tips
 
-1. **Increase batch size**
-```python
-if len(all_companies) >= 100:  # Instead of 50
+1. **Monitor system resources**
+```bash
+# Check CPU and memory usage
+top -pid $(pgrep -f crawl_by_metadata.py)
+
+# Check disk space
+df -h
 ```
 
-2. **Reduce delays**
-```python
-time.sleep(1)  # Instead of 3
+2. **Optimize for overnight runs**
+```bash
+# Prevent display sleep but allow system optimization
+pmset displaysleep 10
+
+# Close unnecessary applications
+# Ensure stable internet connection
 ```
 
-3. **Parallel processing**
-- Run multiple containers with different category ranges
-- Use threading for company detail extraction
+## Advanced Usage
 
-### Database Integration
-To save directly to PostgreSQL instead of Excel:
-1. Install psycopg2: `pip install psycopg2-binary`
-2. Replace `save_batch()` function with database operations
-3. Create appropriate database tables
+### Unbuffered Output Explained
+- **`python -u`**: Forces unbuffered stdout/stderr
+- **Benefit**: See logs in real-time instead of waiting for buffer flush
+- **Usage**: Essential for monitoring long-running crawlers
+
+### Background Execution with nohup
+```bash
+# Standard background execution
+nohup ./run_crawler.sh > crawler.log 2>&1 &
+
+# Explanation:
+# nohup: Ignore hangup signals (survives terminal close)
+# > crawler.log: Redirect stdout to file
+# 2>&1: Redirect stderr to stdout (combine logs)
+# &: Run in background
+```
+
+### System Sleep Prevention
+The `run_crawler.sh` script uses `caffeinate -i` to prevent system sleep while allowing display sleep for energy efficiency.
+
+### Resume Capability
+The crawler automatically:
+1. Reads last progress from `metadata_crawled.xlsx`
+2. Finds corresponding position in `categories_metadata.xlsx`
+3. Resumes crawling from that exact subcategory
+4. Skips already crawled companies using existing Excel files
