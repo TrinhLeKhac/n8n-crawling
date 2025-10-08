@@ -8,6 +8,9 @@ output/
 *.xlsx
 *.csv
 
+# Log files
+*.log
+
 # Python
 __pycache__/
 *.pyc
