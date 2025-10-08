@@ -7,6 +7,30 @@ import pandas as pd
 import time
 import os
 
+def setup_headless_driver():
+    """Setup headless driver optimized for server environment"""
+    import os
+    os.environ['PATH'] += ':/usr/local/bin'
+
+    # Try Chrome headless first
+    try:
+        chrome_options = Options()
+        chrome_options.add_argument("--headless")
+        chrome_options.add_argument("--no-sandbox")
+        chrome_options.add_argument("--disable-dev-shm-usage")
+        chrome_options.add_argument("--disable-gpu")
+        chrome_options.add_argument("--remote-debugging-port=9222")
+        chrome_options.add_argument("--disable-extensions")
+        chrome_options.add_argument("--disable-plugins")
+        chrome_options.add_argument("--window-size=1920,1080")
+        chrome_options.add_argument("--user-agent=Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+
+        driver = webdriver.Chrome(options=chrome_options)
+        print("Using Chrome headless browser")
+        return driver
+    except Exception as e:
+        print(f"Chrome headless failed: {e}")
+
 def setup_driver():
     """Setup Chrome driver, fallback to Firefox if Chrome fails"""
     # Try Chrome first
@@ -28,31 +52,54 @@ def setup_driver():
     # Fallback to Firefox
     try:
         from selenium.webdriver.firefox.options import Options as FirefoxOptions
+        from selenium.webdriver.firefox.service import Service as FirefoxService
+        
         firefox_options = FirefoxOptions()
         firefox_options.add_argument("--headless")
         firefox_options.set_preference("general.useragent.override",
                                        "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
-
-        driver = webdriver.Firefox(options=firefox_options)
+        
+        # Try different geckodriver paths
+        geckodriver_paths = [
+            "/usr/local/bin/geckodriver",
+            "/usr/bin/geckodriver",
+            "geckodriver"
+        ]
+        
+        service = None
+        for path in geckodriver_paths:
+            try:
+                service = FirefoxService(executable_path=path)
+                break
+            except:
+                continue
+        
+        driver = webdriver.Firefox(service=service, options=firefox_options)
         print("Using Firefox browser")
         return driver
     except Exception as e:
         print(f"Firefox failed: {e}")
         raise Exception("Both Chrome and Firefox failed. Please check browser installation.")
 
-def crawl_companies_from_page(driver, category_name, crawled_companies=None):
+def crawl_companies_from_page(driver, category_name, crawled_companies=None, max_companies=0):
     """Crawl companies from all pages, skipping already crawled ones"""
     if crawled_companies is None:
         crawled_companies = set()
     
     companies = []
     page = 1
+    total_crawled = len(crawled_companies)
     
     try:
         print(f"Crawling {category_name}")
         
         while True:
-            print(f"  Page {page}...")
+            # Check if we've reached the expected number
+            if max_companies > 0 and total_crawled >= max_companies:
+                print(f"  Reached expected number of companies ({max_companies}). Stopping.")
+                break
+                
+            print(f"  Page {page}... (Progress: {total_crawled}/{max_companies if max_companies > 0 else '?'})")
             time.sleep(3)
             
             # Find all companies and save links first
@@ -76,6 +123,11 @@ def crawl_companies_from_page(driver, category_name, crawled_companies=None):
             
             for name, href in company_links:
                 try:
+                    # Check limit again
+                    if max_companies > 0 and total_crawled >= max_companies:
+                        print(f"  Reached limit ({max_companies}). Stopping crawling.")
+                        break
+                        
                     # Skip if company already crawled
                     if name in crawled_companies:
                         print(f"    Skipping already crawled: {name}")
@@ -85,11 +137,16 @@ def crawl_companies_from_page(driver, category_name, crawled_companies=None):
                     company_info = extract_company_detail(driver, href, category_name)
                     if company_info:
                         companies.append(company_info)
-                        print(f"    ✓ {company_info['Tên công ty']}")
+                        total_crawled += 1
+                        print(f"    ✓ {company_info['Tên công ty']} ({total_crawled}/{max_companies if max_companies > 0 else '?'})")
                 except Exception as e:
                     print(f"    ✗ Error crawling {name}: {e}")
                     continue
             
+            # Check if we should continue to next page
+            if max_companies > 0 and total_crawled >= max_companies:
+                break
+                
             # Try to find next page
             try:
                 page_links = driver.find_elements(By.CSS_SELECTOR, "#paging > a")
@@ -244,7 +301,7 @@ def extract_company_detail(driver, company_url, category_name):
         print(f"      Hotline: {hotline}")
         print(f"      Email: {email}")
         print(f"      Website: {website}")
-        print(f"      Introduction: {intro[:500]}..." if len(intro) > 500 else f"      Introduction: {intro}")
+        # print(f"      Introduction: {intro[:500]}..." if len(intro) > 500 else f"      Introduction: {intro}")
         print(f"      Business: {business}")
         print(f"      Products: {products[:100]}..." if len(products) > 100 else f"      Products: {products}")
         print(f"      Category: {main_category}")
@@ -258,7 +315,7 @@ def extract_company_detail(driver, company_url, category_name):
             "Hotline": hotline,
             "Email": email,
             "Website": website,
-            "Giới thiệu": intro,
+            # "Giới thiệu": intro,
             "Ngành nghề": business,
             "Sản phẩm dịch vụ": products,
             "Ngành": main_category,
@@ -268,6 +325,14 @@ def extract_company_detail(driver, company_url, category_name):
     except Exception as e:
         print(f"    Error extracting detail: {e}")
         return None
+
+def extract_website_count(sub_name):
+    """Extract number of websites from subcategory name like 'Bếp Gas (140)'"""
+    import re
+    match = re.search(r'\((\d+)\)$', sub_name)
+    if match:
+        return int(match.group(1)), re.sub(r'\s*\(\d+\)$', '', sub_name)
+    return 0, sub_name
 
 def crawl_sub_categories(driver, main_category_name, existing_metadata):
     """Crawl sub categories from class col-sm-6 p-4 pe-3 pt-0 pb-2"""
@@ -280,15 +345,22 @@ def crawl_sub_categories(driver, main_category_name, existing_metadata):
         sub_data = [(elem.text.strip(), elem.get_attribute('href')) for elem in sub_elements]
         print(f"  Found {len(sub_data)} sub categories")
         
-        for sub_name, sub_href in sub_data:
+        for sub_name_raw, sub_href in sub_data:
             try:
-                print(f"    Processing sub category: {sub_name}")
+                # Extract website count and clean name
+                expected_count, sub_name_clean = extract_website_count(sub_name_raw)
+                print(f"    Processing sub category: {sub_name_clean} (Expected: {expected_count} websites)")
                 
                 # Get already crawled companies for this subcategory
-                crawled_companies = get_crawled_companies(existing_metadata, main_category_name, sub_name)
+                crawled_companies = get_crawled_companies(existing_metadata, main_category_name, sub_name_clean)
+                crawled_count = len(crawled_companies)
                 
-                if crawled_companies:
-                    print(f"    Found {len(crawled_companies)} already crawled companies")
+                print(f"    Already crawled: {crawled_count}/{expected_count} companies")
+                
+                # Skip if already crawled enough companies
+                if crawled_count >= expected_count and expected_count > 0:
+                    print(f"    Skipping {sub_name_clean} - already completed ({crawled_count}/{expected_count})")
+                    continue
                 
                 # Click on sub category
                 driver.get(sub_href)
@@ -297,15 +369,17 @@ def crawl_sub_categories(driver, main_category_name, existing_metadata):
                 # Crawl companies (skip already crawled ones)
                 companies = crawl_companies_from_page(
                     driver, 
-                    f"{main_category_name} - {sub_name}", 
-                    crawled_companies=crawled_companies
+                    f"{main_category_name} - {sub_name_clean}", 
+                    crawled_companies=crawled_companies,
+                    max_companies=expected_count
                 )
                 
                 # Add to metadata
                 for company in companies:
                     metadata_list.append({
                         "main_category": main_category_name,
-                        "sub_category": sub_name,
+                        "sub_category": sub_name_clean,
+                        "number_website": expected_count,
                         "company": company["Tên công ty"]
                     })
                 
@@ -318,7 +392,7 @@ def crawl_sub_categories(driver, main_category_name, existing_metadata):
                     all_companies = []
                 
             except Exception as e:
-                print(f"    Error crawling sub category {sub_name}: {e}")
+                print(f"    Error crawling sub category {sub_name_raw}: {e}")
                 continue
         
         # Save remaining data
